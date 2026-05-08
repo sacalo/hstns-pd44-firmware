@@ -291,8 +291,8 @@ void voutCalibrationAndOvpDetect(void)
 
     /* Check controlStatus bit4 (OVP armed) */
     if (controlStatus & 0x10) {
-        int16_t ovp_cnt = ovpCounter;
-        ovp_cnt++;
+        int16_t ovp_cnt_prev = ovpCounter;
+        int16_t ovp_cnt = (int16_t)(ovp_cnt_prev + 1);
         ovpCounter = ovp_cnt;
 
         if (systemState == 2) {
@@ -301,7 +301,7 @@ void voutCalibrationAndOvpDetect(void)
             pdc2 = 0;                             /* 0x1D6E */
             pdc3 = 0;                            /* 0x1D6C */
 
-            ovp_cnt += 2;                            /* accelerate */
+            ovp_cnt = (int16_t)(ovp_cnt_prev + 2);   /* 0x4496: INC2 old counter */
             ovpCounter = ovp_cnt;
 
             if (ovp_cnt > 1) {
