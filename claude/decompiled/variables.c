@@ -184,7 +184,7 @@ volatile int16_t  voutRefTarget;
 
 /* State handler variables */
 volatile uint16_t pwmSoftStartCnt;
-volatile uint16_t vinCooldownTimer;
+volatile uint16_t vinCooldownTimer = 0x07D0; /* .dinit value; monitorVin decrements before use */
 volatile uint16_t voutOvpThreshold;
 volatile uint16_t voutFanSetpoint;
 volatile uint16_t voutWorkValue;
