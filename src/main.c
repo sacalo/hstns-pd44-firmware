@@ -88,6 +88,8 @@ void initUART(void);
 void initVars(void);
 void PWMStart(void);
 void mainStateDispatch(void);
+int spi_at45db_init(void);
+int spi_flash_load_config(void);
 
 
 int main(void)
@@ -109,6 +111,8 @@ int main(void)
   initI2C2();
   initUART();
   initSPI2();
+  spi_at45db_init();
+  spi_flash_load_config();
   PWMStart();
   SET_CPU_IPL(0);
   //__builtin_enable_interrupts();    // unmask interrupts (IPL=0)

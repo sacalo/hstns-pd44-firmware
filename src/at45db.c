@@ -6,6 +6,17 @@
 
 extern void delay_ms(uint16_t ms);
 extern void uart2_transmit_frame(void);
+extern s16 voutSetpoint;
+extern int16_t cal_a_gain, cal_a_offset;
+extern int16_t Iref;
+extern uint16_t ioutAdcRaw;
+extern uint16_t ocp_latch_threshold;
+extern uint16_t ocp_hard_threshold;
+extern uint16_t ocp_latch_delay;
+extern uint16_t ocp_foldback_delay;
+extern uint16_t ovp_threshold_normal;
+extern uint16_t ovp_threshold_mode4;
+extern uint16_t ovp_freq_ctrl_min;
 
 /* reads can bypass the buffers */
 #define OP_READ_CONTINUOUS	0xE8
@@ -45,6 +56,86 @@ extern void uart2_transmit_frame(void);
 
 uint16_t spi_flash_status;  /* bit7 = RDY/BUSY             */
 uint8_t at45db_device_id[8];
+uint16_t spi_flash_config_status;
+static uint8_t spi_flash_config_buf[256];
+
+#define FLASH_CONFIG_PAGE     6u
+#define FLASH_CONFIG_MAGIC    0x5044u
+#define FLASH_CONFIG_VERSION  1u
+#define FLASH_CONFIG_DATA_WORDS 14u
+#define FLASH_CONFIG_CRC_WORD   14u
+
+enum {
+    FLASH_CONFIG_OK       = 0x0001u,
+    FLASH_CONFIG_BLANK    = 0x0002u,
+    FLASH_CONFIG_BAD_CRC  = 0x0004u,
+    FLASH_CONFIG_BAD_ID   = 0x0008u,
+    FLASH_CONFIG_WRITE_OK = 0x0010u,
+    FLASH_CONFIG_WRITE_ERR = 0x0020u
+};
+
+uint16_t crc16(const uint8_t *buf, uint16_t len);
+
+static uint16_t flash_config_get16(uint16_t idx)
+{
+    uint16_t pos = idx * 2u;
+    return (uint16_t)spi_flash_config_buf[pos] |
+           ((uint16_t)spi_flash_config_buf[pos + 1u] << 8);
+}
+
+static void flash_config_put16(uint16_t idx, uint16_t value)
+{
+    uint16_t pos = idx * 2u;
+    spi_flash_config_buf[pos] = (uint8_t)value;
+    spi_flash_config_buf[pos + 1u] = (uint8_t)(value >> 8);
+}
+
+static uint16_t flash_config_crc(void)
+{
+    return crc16(spi_flash_config_buf, FLASH_CONFIG_DATA_WORDS * 2u);
+}
+
+static void flash_config_clear_buf(void)
+{
+    for (uint16_t i = 0; i < sizeof(spi_flash_config_buf); i++)
+        spi_flash_config_buf[i] = 0xFFu;
+}
+
+static void flash_config_pack(void)
+{
+    flash_config_clear_buf();
+    flash_config_put16(0, FLASH_CONFIG_MAGIC);
+    flash_config_put16(1, FLASH_CONFIG_VERSION);
+    flash_config_put16(2, (uint16_t)voutSetpoint);
+    flash_config_put16(3, (uint16_t)cal_a_gain);
+    flash_config_put16(4, (uint16_t)cal_a_offset);
+    flash_config_put16(5, (uint16_t)Iref);
+    flash_config_put16(6, ioutAdcRaw);
+    flash_config_put16(7, ocp_latch_threshold);
+    flash_config_put16(8, ocp_hard_threshold);
+    flash_config_put16(9, ocp_latch_delay);
+    flash_config_put16(10, ocp_foldback_delay);
+    flash_config_put16(11, ovp_threshold_normal);
+    flash_config_put16(12, ovp_threshold_mode4);
+    flash_config_put16(13, ovp_freq_ctrl_min);
+    flash_config_put16(FLASH_CONFIG_CRC_WORD, flash_config_crc());
+}
+
+static void flash_config_apply(void)
+{
+    voutSetpoint = (s16)flash_config_get16(2);
+    cal_a_gain = (int16_t)flash_config_get16(3);
+    cal_a_offset = (int16_t)flash_config_get16(4);
+    Iref = (int16_t)flash_config_get16(5);
+    ioutAdcRaw = flash_config_get16(6);
+    ocp_latch_threshold = flash_config_get16(7);
+    ocp_hard_threshold = flash_config_get16(8);
+    ocp_latch_delay = flash_config_get16(9);
+    ocp_foldback_delay = flash_config_get16(10);
+    ovp_threshold_normal = flash_config_get16(11);
+    ovp_threshold_mode4 = flash_config_get16(12);
+    ovp_freq_ctrl_min = flash_config_get16(13);
+}
 
 static inline void spi_cs_assert(void)
 {
@@ -391,6 +482,50 @@ int spi_at45db_page_program(const uint8_t *buf, uint16_t page)
     if (status & 0x20)
         return -1;
 
+    return 0;
+}
+
+int spi_flash_load_config(void)
+{
+    spi_flash_config_status = 0;
+
+    if (spi_at45db_page_read(spi_flash_config_buf, sizeof(spi_flash_config_buf),
+                             FLASH_CONFIG_PAGE, 0) != 0) {
+        spi_flash_config_status = FLASH_CONFIG_BAD_ID;
+        return -1;
+    }
+
+    if ((spi_flash_config_buf[0] == 0xFFu) && (spi_flash_config_buf[1] == 0xFFu)) {
+        spi_flash_config_status = FLASH_CONFIG_BLANK;
+        return 1;
+    }
+
+    if ((flash_config_get16(0) != FLASH_CONFIG_MAGIC) ||
+        (flash_config_get16(1) != FLASH_CONFIG_VERSION)) {
+        spi_flash_config_status = FLASH_CONFIG_BAD_ID;
+        return -1;
+    }
+
+    if (flash_config_get16(FLASH_CONFIG_CRC_WORD) != flash_config_crc()) {
+        spi_flash_config_status = FLASH_CONFIG_BAD_CRC;
+        return -1;
+    }
+
+    flash_config_apply();
+    spi_flash_config_status = FLASH_CONFIG_OK;
+    return 0;
+}
+
+int spi_flash_save_config(void)
+{
+    flash_config_pack();
+
+    if (spi_at45db_page_write_safe(spi_flash_config_buf, FLASH_CONFIG_PAGE) != 0) {
+        spi_flash_config_status = FLASH_CONFIG_WRITE_ERR;
+        return -1;
+    }
+
+    spi_flash_config_status = FLASH_CONFIG_WRITE_OK;
     return 0;
 }
 
