@@ -304,6 +304,8 @@ extern volatile int16_t  countdown_1D20;     /* 0x1D20 */
 extern uint16_t eeprom_crc_lo_saved;         /* 0x27F0 */
 extern uint16_t eeprom_page_addr;            /* 0x27F2 */
 extern uint16_t eeprom_crc_lo;               /* 0x27F4 */
+extern uint16_t eeprom_var_27F6;             /* 0x27F6 - EEPROM metadata word */
+extern uint16_t eeprom_var_27F8;             /* 0x27F8 - EEPROM metadata word */
 extern uint16_t eeprom_cfg_reg;              /* 0x27FA - configuration register
                                               *   bit0    = enable
                                               *   bit5:4  = mode (2-bit)
@@ -455,12 +457,12 @@ extern volatile uint16_t adcLiveC;              /* 0x1BC8 - (vs peakTracking[6])
  * ============================================================================ */
 extern volatile uint16_t ioutVoutTarget;        /* 0x1BB0 - Iout/Vout readback target */
 extern volatile uint16_t ioutAdcRaw;            /* 0x1BB4 - Iout ADC raw value */
-extern volatile uint16_t eepromPageShadow;      /* 0x1BB8 - shadow of eeprom_page_addr */
-extern volatile uint16_t eepromCrcShadow;       /* 0x1BBA - shadow of eeprom CRC */
+extern volatile uint16_t eepromPageShadow;      /* 0x1BB8 - shadow of EEPROM word 0x27F6 */
+extern volatile uint16_t eepromCrcShadow;       /* 0x1BBA - shadow of EEPROM word 0x27F8 */
 extern volatile uint16_t ioutScaleConst;        /* 0x1BC6 - Iout scale constant */
 extern volatile uint16_t ioutCalFactor;         /* 0x1BCA - Iout cal factor (word) */
 extern volatile uint16_t ioutCalFactorShadow;   /* 0x1BCC - PMBus shadow of Iout cal factor */
-extern volatile uint16_t eepromSavedShadow;     /* 0x198E - shadow of eeprom_crc_lo_saved */
+extern volatile uint16_t eepromSavedShadow;     /* 0x198E - shadow of eeprom_crc_lo */
 
 /* ============================================================================
  * UART1 subsystem
@@ -540,7 +542,7 @@ extern volatile uint16_t pmbusCfgReg2;          /* 0x1984 */
 extern volatile uint16_t pmbusCfgReg3;          /* 0x1986 */
 extern volatile uint16_t pmbusCfgReg4;          /* 0x1988 */
 extern volatile uint16_t pmbusCfgReg5;          /* 0x198A */
-extern volatile uint16_t pmbusCfgReg6;          /* 0x198C */
+extern volatile uint16_t pmbusCfgReg6;          /* 0x198C - shadow of eeprom_page_addr */
 extern volatile uint16_t pmbusDataReg0;         /* 0x19A6 */
 extern volatile uint16_t pmbusDataReg1;         /* 0x19A8 */
 extern volatile uint16_t pmbusDataReg2;         /* 0x19AA */

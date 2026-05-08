@@ -174,6 +174,8 @@ void eepromCfgUpdate(uint8_t mode, uint8_t status, uint8_t enable)
  * eeprom accessors (0x5AB4..0x5AE2)
  * ============================================================================ */
 uint16_t eepromCfgRead(void) { return eeprom_cfg_reg; }
+uint16_t eepromVar27F8Read(void) { return eeprom_var_27F8; }
+uint16_t eepromVar27F6Read(void) { return eeprom_var_27F6; }
 uint16_t eepromPageAddrRead(void) { return eeprom_page_addr; }
 uint16_t eepromCrcRead(void) { return eeprom_crc_lo; }
 uint16_t eepromSavedRead(void) { return eeprom_crc_lo_saved; }
@@ -256,11 +258,16 @@ static void setFaultStateImpl(void) {
         }
     }
 
-    /* Call status conversion accessors and store results */
+    /*
+     * 0x2018..0x202E snapshots EEPROM metadata through accessors:
+     * 0x5AB8 -> 0x1BBC, 0x5AC0 -> 0x1BBA, 0x5AC8 -> 0x1BB8,
+     * 0x5AD0 -> 0x198E, 0x5AD8 -> 0x198C.
+     */
     flashUpdateResult = eepromCfgRead();
-    eepromCrcShadow = eepromCrcRead();
-    eepromPageShadow = eepromPageAddrRead();
-    eepromSavedShadow = eepromSavedRead();
+    eepromCrcShadow = eepromVar27F8Read();
+    eepromPageShadow = eepromVar27F6Read();
+    eepromSavedShadow = eepromCrcRead();
+    pmbusCfgReg6 = eepromPageAddrRead();
 }
 
 void setFaultState(void) { setFaultStateImpl(); }

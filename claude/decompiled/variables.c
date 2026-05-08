@@ -5,7 +5,7 @@
 #include "variables.h"
 
 /* Firmware mode */
-volatile uint16_t fw_mode;
+volatile uint16_t fw_mode = 2;
 
 /* Product identification */
 char model_id[5];
@@ -411,11 +411,14 @@ volatile uint16_t protVar1244;
 volatile uint16_t protVar1246;
 
 /* EEPROM emulation */
-uint16_t eeprom_crc_lo_saved;
+/* Post-boot EEPROM metadata state observed in the original HEX before main app sampling. */
+uint16_t eeprom_crc_lo_saved = 0x0801;
 uint16_t eeprom_page_addr;
 uint16_t eeprom_crc_lo;
-uint16_t eeprom_cfg_reg;
-uint16_t eeprom_var_27FC;
+uint16_t eeprom_var_27F6 = 0xDA5B;
+uint16_t eeprom_var_27F8 = 0x0101;
+uint16_t eeprom_cfg_reg = 0x0020;
+uint16_t eeprom_var_27FC = 1;
 
 /* Vin sense ADC shadow (was odd-address RAM read at 0x1A51) */
 volatile uint16_t vinSenseAdc;
