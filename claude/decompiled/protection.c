@@ -824,39 +824,39 @@ void tempSample(void)  /* 0x316E */
     uint16_t new_ot = thresholdCompare(adc15, 0x02C9, 0x026C, prev_ot);
 
     /* 0x317C  CP0.B W0         — is new_ot == 0? */
-    /* 0x317E  BRA NZ, 0x3190   — if new_ot != 0 (OT active) → increment counter */
-    if (new_ot == 0) {
-        /* Temperature in safe range: check gate and state */
-
-        /* 0x3180  MOV.B LATD, WREG   — read LATD */
-        /* 0x3182  BTST.Z W0, #3      — test LATD bit3 */
-        /* 0x3184  BRA NZ, 0x3190     — if LATD bit3 set → increment counter */
-        if (LATDbits.LATD3) {
-            goto temp_increment;
-        }
-
-        /* 0x3186  BTST 0x1E19, #0    — flags_1E19 bit0 (OT latch) set? */
-        /* 0x3188  BRA NZ, 0x3190     */
-        if (currentLimitFlags & (1u << 8)) {
-            goto temp_increment;
-        }
-
-        /* 0x318A  MOV 0x1E22, W0     — systemState */
-        /* 0x318C  SUB W0, #5          — == 5? */
-        /* 0x318E  BRA NZ, 0x3194     — not state 5 → do NOT increment */
-        if (systemState != 5) {
-            /* 0x3194  INC 0x123A       — increment counter (state != 5 path) */
-            goto temp_increment;
-        }
-
-        /* All safe conditions true AND systemState == ST_HOLDOFF → clear counter */
-        /* 0x3190  CLR 0x123A */
-        protVar123A = 0;
-        goto temp_threshold;  /* BRA 0x3196 */
+    /* 0x317E  BRA NZ, 0x3190   — if new_ot != 0, clear counter */
+    if (new_ot != 0) {
+        goto temp_clear;        /* 0x3190 */
     }
 
+    /* Temperature in safe range: check gate and state */
+
+    /* 0x3180  MOV.B LATD, WREG   — read LATD */
+    /* 0x3182  BTST.Z W0, #3      — test LATD bit3 */
+    /* 0x3184  BRA NZ, 0x3190     — if LATD bit3 set, clear counter */
+    if (LATDbits.LATD3) {
+        goto temp_clear;
+    }
+
+    /* 0x3186  BTST 0x1E19, #0    — flags_1E19 bit0 (OT latch) set? */
+    /* 0x3188  BRA NZ, 0x3190     — if set, clear counter */
+    if (currentLimitFlags & (1u << 8)) {
+        goto temp_clear;
+    }
+
+    /* 0x318A  MOV 0x1E22, W0     — systemState */
+    /* 0x318C  SUB W0, #5 */
+    /* 0x318E  BRA NZ, 0x3194     — state != 5 increments counter */
+    if (systemState != 5) {
+        goto temp_increment;
+    }
+
+temp_clear:
+    /* 0x3190  CLR 0x123A */
+    protVar123A = 0;
+    goto temp_threshold;        /* 0x3192  BRA 0x3196 */
+
 temp_increment:
-    /* new_ot != 0 (OT detected) OR gate/latch/state conditions not met */
     /* 0x3194  INC 0x123A */
     (protVar123A)++;
 
