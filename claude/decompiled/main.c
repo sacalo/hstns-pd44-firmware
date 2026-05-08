@@ -187,12 +187,12 @@ int main(void)
         dbg_main_stage = 3;
         mainStateDispatch();          /* 0x51FE: T1-driven main state machine */
         dbg_main_stage = 4;
-        //flashPageProgramRead();         /* 0x41A2: Flash page program + read 256B */
-        //flashPageReadWrite();           /* 0x41BE: Flash page read + writeback */
-        //fwUpdateWriteVerify();          /* 0x425E: FW update 256B write + CRC verify */
-        //flashReadPage6();               /* 0x4260: Read Flash page 6 (config) */
-        //flashReadPage7();               /* 0x427E: Read Flash page 7 (calibration) */
-        //flashProgramRead32();           /* 0x429C: Flash program + read 32B */
+        flashPageProgramRead();         /* 0x41A2: Flash page program + read 256B */
+        flashPageReadWrite();           /* 0x41BE: Flash page read + writeback */
+        fwUpdateWriteVerify();          /* 0x425E: FW update 256B write + CRC verify */
+        flashReadPage6();               /* 0x4260: Read Flash page 6 (config) */
+        flashReadPage7();               /* 0x427E: Read Flash page 7 (calibration) */
+        flashProgramRead32();           /* 0x429C: Flash program + read 32B */
         //flashUart2LoaderService();      /* UART2: AA55+PageIndex+256B+CRC -> AT45DB page write */
     }
 }
