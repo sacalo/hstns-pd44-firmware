@@ -104,9 +104,6 @@ void initVars(void)
     /* Initialize state machine to IDLE */
     systemState = ST_IDLE;              /* 0x1E22 */
 
-    /* statusUpdate/currentLimit hysteresis seed (read as thermalFlags bit15 in asm). */
-    thermalFlags = 0x8000;              /* keep high-bit set until explicit updates */
-
     /* Output Compare 2 */
     OC2RS = 400;               /* 0x190 */
     oc2rs_shadow = 400;        /* 0x1E38 */
