@@ -796,8 +796,8 @@ void flashCalibrationLoad(void) {
     goto epilogue;
 
 flash_not_present:
-    //at45dbSetBinaryPage256();       /* 0x38DC */
-    //flashClearCalibrationPages();         /* 0x3ABA */
+    at45dbSetBinaryPage256();      /* 0x38DC */
+    flashClearCalibrationPages();  /* 0x3ABA */
 
     flash_verify_flags[0] = 0;
     flash_verify_flags[1] = 0;
@@ -824,9 +824,9 @@ void voltageErrorTracking(void) {
         memset(flash_read_buf_15D0, 0, 0x16);
 
         loadCalibrationFromFlash();
-        /* at45dbPageErase(0); */
-        /* at45dbBufferWrite(flash_read_buf_15D0, 0x16); */
-        /* at45dbBufferProgramToPage(0); */
+        at45dbPageErase(0);
+        at45dbBufferWrite(flash_read_buf_15D0, 0x16);
+        at45dbBufferProgramToPage(0);
         return;
     }
 
@@ -867,9 +867,9 @@ done:
     if (updated) {
         statusFlags2 &= ~(1u << 12);
         copyPeaksToFlashBuf();
-        /* at45dbPageErase(0); */
-        /* at45dbBufferWrite(flash_read_buf_15D0, 0x16); */
-        /* at45dbBufferProgramToPage(0); */
+        at45dbPageErase(0);
+        at45dbBufferWrite(flash_read_buf_15D0, 0x16);
+        at45dbBufferProgramToPage(0);
     }
 }
 
@@ -939,6 +939,30 @@ static void snapshotTelemetryToSectorBuf(void) {
     flash_sector_buf_1498[28] = (uint8_t)(outputVoltage >> 8);
 }
 
+/* 0x3F92/0x401C: carry page tail plus two next-page sectors into page 2/4. */
+static void rotateFlashHistoryPage(uint8_t *scratch, uint16_t page)
+{
+    at45dbPageRead(scratch, 0x40, page, 0);
+
+    for (uint16_t i = 0; i < 0x20; i++) {
+        flash_sector_buf_1498[i] = flash_sector_buf_1498[0xE0 + i];
+        flash_sector_buf_1498[0x20 + i] = scratch[i];
+        flash_sector_buf_1498[0x40 + i] = scratch[0x20 + i];
+    }
+
+    memset(&flash_sector_buf_1498[0x60], 0, 0xA0);
+}
+
+/* 0x3FD0/0x4052: shift old sectors down after sector 0 gets the new snapshot. */
+static void shiftFlashHistorySectors(void)
+{
+    for (int16_t sector = 7; sector > 0; sector--) {
+        memcpy(&flash_sector_buf_1498[(uint16_t)sector * 0x20],
+               &flash_sector_buf_1498[(uint16_t)(sector - 1) * 0x20],
+               0x20);
+    }
+}
+
 /* ============================================================================
  * currentRegulation (0x3F0E) — Flash sector management / telemetry snapshot
  * ============================================================================ */
@@ -958,13 +982,16 @@ void currentRegulation(void) {
         flash_crc_accum++;
 
         uint8_t local_frame[64];
-        at45dbPageRead(local_frame, 64, 2, 0);
+        rotateFlashHistoryPage(local_frame, 2);
 
-        /* Clear sector padding */
-        for (uint16_t a = 0; a < 256; a++)
-            flash_sector_buf_1498[a] = 0;
+        at45dbPageErase(2);
+        at45dbBufferWrite(flash_sector_buf_1498, 256);
+        at45dbBufferProgramToPage(2);
+
+        at45dbPageRead(flash_sector_buf_1498, 256, 1, 0);
 
         snapshotStatusToSectorBuf();
+        shiftFlashHistorySectors();
 
         /* Write to flash page 1 */
         at45dbPageErase(1);
@@ -973,11 +1000,16 @@ void currentRegulation(void) {
 
         /* Read page 3 */
         at45dbPageRead(flash_sector_buf_1498, 256, 3, 0);
+        rotateFlashHistoryPage(local_frame, 4);
 
-        for (uint16_t a = 0; a < 256; a++)
-            flash_sector_buf_1498[a] = 0;
+        at45dbPageErase(4);
+        at45dbBufferWrite(flash_sector_buf_1498, 256);
+        at45dbBufferProgramToPage(4);
+
+        at45dbPageRead(flash_sector_buf_1498, 256, 3, 0);
 
         snapshotTelemetryToSectorBuf();
+        shiftFlashHistorySectors();
     } else {
         /* Idle mode */
         snapshotStatusToSectorBuf();

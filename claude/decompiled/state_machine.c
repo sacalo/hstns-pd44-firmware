@@ -231,12 +231,12 @@ void mainStateDispatch(void)
     updatePmbusStatus();            /* 0x546C */
     dbg_main_stage = 46;
     checkOtp();                     /* 0x4D94 */
-    /* flashCalibrationLoad(); */   /* 0x3B5E: keep disabled in SIM (SPI Flash wait loop blocks main dispatch) */
+    flashCalibrationLoad();         /* 0x3B5E */
     dbg_main_stage = 47;
     voltageErrorTracking();         /* 0x40C2 */
     dbg_main_stage = 48;
     currentRegulation();            /* 0x3F0E */
-    /* flashReadbackHandler(); */   /* 0x42C8: keep disabled in SIM */
+    flashReadbackHandler();         /* 0x42C8 */
     dbg_main_stage = 49;
     uptimeCounterUpdate();                /* 0x50D4 */
     dbg_main_stage = 50;

@@ -185,7 +185,7 @@ void __attribute__((interrupt, no_auto_psv)) _T1Interrupt(void)
     softStartRamp();            /* 0x2DC6 */
     softStartRamp2();           /* 0x2DF6 */
     modeCheck();                 /* 0x32E0 */
-    /* flashPeriodicSave(); */              /* 0x3EBC: keep disabled in SIM */
+    flashPeriodicSave();         /* 0x3EBC */
 
     /* ---- State machine & I2C ---- */
     stateControlMachine();              /* 0x2E2C */

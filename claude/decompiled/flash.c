@@ -85,18 +85,18 @@ void at45dbWaitReady(void)
 /* 0x3922: Main Memory Page Erase (opcode 0x81) */
 void at45dbPageErase(uint16_t page_num)
 {
-//    at45dbWaitReady();
-//    at45dbCsAssert();
-//    (void)SPI2BUF;
-//    SPI2BUF = 0x81;
-//    while (!(SPI2STATbits.SPIRBF)); (void)SPI2BUF;
-//    SPI2BUF = (page_num >> 8) & 0x03;      /* page[9:8] */
-//    while (!(SPI2STATbits.SPIRBF)); (void)SPI2BUF;
-//    SPI2BUF = page_num & 0xFF;             /* page[7:0] */
-//    while (!(SPI2STATbits.SPIRBF)); (void)SPI2BUF;
-//    SPI2BUF = 0x00;                         /* byte offset = 0 */
-//    while (!(SPI2STATbits.SPIRBF));
-//    at45dbCsDeassert();
+    at45dbWaitReady();
+    at45dbCsAssert();
+    (void)SPI2BUF;
+    SPI2BUF = 0x81;
+    while (!(SPI2STATbits.SPIRBF)); (void)SPI2BUF;
+    SPI2BUF = (page_num >> 8) & 0x03;      /* page[9:8] */
+    while (!(SPI2STATbits.SPIRBF)); (void)SPI2BUF;
+    SPI2BUF = page_num & 0xFF;             /* page[7:0] */
+    while (!(SPI2STATbits.SPIRBF)); (void)SPI2BUF;
+    SPI2BUF = 0x00;                        /* byte offset = 0 */
+    while (!(SPI2STATbits.SPIRBF));
+    at45dbCsDeassert();
 }
 
 /* 0x396E: Buffer1 Write (opcode 0x84) */
