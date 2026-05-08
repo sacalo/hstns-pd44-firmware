@@ -74,7 +74,16 @@ extern void tempFanHandler(void);
 extern void PWMStart(void);
 extern void pwm_force_off(void);
 extern int spi_flash_save_config(void);
+extern int spi_flash_verify_firmware_boot(void);
+extern int spi_flash_verify_firmware_slot(uint16_t slot);
+extern int spi_flash_save_firmware_metadata(uint16_t slot, uint16_t expected_crc);
+extern int spi_flash_save_current_firmware_crc(uint16_t slot);
 extern uint16_t spi_flash_config_status;
+extern uint16_t spi_flash_fw_status;
+extern uint16_t spi_flash_fw_actual_crc;
+extern uint16_t spi_flash_fw_expected_crc;
+extern uint16_t spi_flash_fw_active_slot;
+extern uint16_t spi_flash_fw_checked_page;
 extern int16_t vout_cal;
 extern int16_t Imeas_scaled;
 extern s16 voutSetpoint;
@@ -117,6 +126,12 @@ extern uint16_t ovp_freq_ctrl_min;
 #define PMBUS_MFR_OVP_MODE4     0xD7u
 #define PMBUS_MFR_OVP_FREQ_MIN  0xD8u
 #define PMBUS_MFR_IOUT_LIMIT    0xD9u
+#define PMBUS_MFR_FW_SLOT       0xDAu
+#define PMBUS_MFR_FW_STATUS     0xDBu
+#define PMBUS_MFR_FW_ACTUAL_CRC 0xDCu
+#define PMBUS_MFR_FW_EXPECT_CRC 0xDDu
+#define PMBUS_MFR_FW_PAGE       0xDEu
+#define PMBUS_MFR_FW_ACTION     0xDFu
 
 static uint8_t pmbus_cmd;
 static uint8_t pmbus_rx_count;
@@ -127,6 +142,7 @@ static uint8_t pmbus_tx_idx;
 static uint16_t pmbus_margin_high;
 static uint16_t pmbus_margin_low;
 static uint8_t pmbus_operation;
+static uint16_t pmbus_fw_slot;
 
 static void pmbus_put_word(uint16_t value)
 {
@@ -210,6 +226,10 @@ static void pmbus_write_word(uint8_t cmd, uint16_t value)
             case PMBUS_MFR_OVP_MODE4:    ovp_threshold_mode4 = value; break;
             case PMBUS_MFR_OVP_FREQ_MIN: ovp_freq_ctrl_min = value; break;
             case PMBUS_MFR_IOUT_LIMIT:   ioutAdcRaw = value; break;
+            case PMBUS_MFR_FW_SLOT:      pmbus_fw_slot = value & 1u; break;
+            case PMBUS_MFR_FW_EXPECT_CRC:
+                spi_flash_fw_expected_crc = value;
+                break;
             default: break;
         }
 }
@@ -220,6 +240,19 @@ static void pmbus_write_byte(uint8_t cmd, uint8_t value)
                 pmbus_apply_operation(value);
         } else if ((cmd == PMBUS_MFR_SAVE_CONFIG) && (value == 0xA5u)) {
                 (void)spi_flash_save_config();
+        } else if (cmd == PMBUS_MFR_FW_ACTION) {
+                /* Firmware image actions: 0xA5 verify slot, 0x5A boot fallback,
+                 * 0x3C save supplied CRC, 0xC3 learn CRC from selected slot. */
+                if (value == 0xA5u) {
+                        (void)spi_flash_verify_firmware_slot(pmbus_fw_slot);
+                } else if (value == 0x5Au) {
+                        (void)spi_flash_verify_firmware_boot();
+                } else if (value == 0x3Cu) {
+                        (void)spi_flash_save_firmware_metadata(pmbus_fw_slot,
+                                                               spi_flash_fw_expected_crc);
+                } else if (value == 0xC3u) {
+                        (void)spi_flash_save_current_firmware_crc(pmbus_fw_slot);
+                }
         }
 }
 
@@ -245,6 +278,12 @@ static void pmbus_prepare_response(void)
             case PMBUS_MFR_OVP_MODE4:     pmbus_put_word(ovp_threshold_mode4); break;
             case PMBUS_MFR_OVP_FREQ_MIN:  pmbus_put_word(ovp_freq_ctrl_min); break;
             case PMBUS_MFR_IOUT_LIMIT:    pmbus_put_word(ioutAdcRaw); break;
+            case PMBUS_MFR_FW_SLOT:        pmbus_put_word(pmbus_fw_slot); break;
+            case PMBUS_MFR_FW_STATUS:      pmbus_put_word(spi_flash_fw_status); break;
+            case PMBUS_MFR_FW_ACTUAL_CRC:  pmbus_put_word(spi_flash_fw_actual_crc); break;
+            case PMBUS_MFR_FW_EXPECT_CRC:  pmbus_put_word(spi_flash_fw_expected_crc); break;
+            case PMBUS_MFR_FW_PAGE:        pmbus_put_word(spi_flash_fw_checked_page); break;
+            case PMBUS_MFR_FW_ACTION:      pmbus_put_word(spi_flash_fw_active_slot); break;
             default:                      pmbus_put_byte(0xFFu); break;
         }
 }

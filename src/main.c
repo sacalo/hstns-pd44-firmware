@@ -90,6 +90,7 @@ void PWMStart(void);
 void mainStateDispatch(void);
 int spi_at45db_init(void);
 int spi_flash_load_config(void);
+int spi_flash_verify_firmware_boot(void);
 
 
 int main(void)
@@ -113,6 +114,7 @@ int main(void)
   initSPI2();
   spi_at45db_init();
   spi_flash_load_config();
+  spi_flash_verify_firmware_boot();
   PWMStart();
   SET_CPU_IPL(0);
   //__builtin_enable_interrupts();    // unmask interrupts (IPL=0)
