@@ -71,6 +71,214 @@ extern void ocpVrefFoldbackUpdate(void);
 extern void llc_voltage_cal_ovp(void);
 extern void ocpShutdownCheck(void);
 extern void tempFanHandler(void);
+extern void PWMStart(void);
+extern void pwm_force_off(void);
+extern int spi_flash_save_config(void);
+extern uint16_t spi_flash_config_status;
+extern int16_t vout_cal;
+extern int16_t Imeas_scaled;
+extern s16 voutSetpoint;
+extern volatile uint16_t systemState;
+extern volatile uint16_t protectionStatus;
+extern volatile uint16_t controlStatus;
+extern volatile uint16_t pwmRunRequest;
+extern volatile uint16_t pwmRunning;
+extern volatile uint16_t pmbusAlertFlags;
+extern volatile uint16_t adcLiveA;
+extern volatile uint16_t tempAdcValue;
+extern uint16_t ioutAdcRaw;
+extern uint16_t ocp_latch_threshold;
+extern uint16_t ocp_hard_threshold;
+extern uint16_t ocp_latch_delay;
+extern uint16_t ocp_foldback_delay;
+extern uint16_t ovp_threshold_normal;
+extern uint16_t ovp_threshold_mode4;
+extern uint16_t ovp_freq_ctrl_min;
+
+/* Small PMBus subset used by src: telemetry, on/off, margins,
+ * runtime protection limits, fan temperature input and flash save. */
+#define PMBUS_OPERATION          0x01u
+#define PMBUS_CLEAR_FAULTS       0x03u
+#define PMBUS_VOUT_COMMAND      0x21u
+#define PMBUS_VOUT_MARGIN_HIGH  0x25u
+#define PMBUS_VOUT_MARGIN_LOW   0x26u
+#define PMBUS_STATUS_BYTE       0x78u
+#define PMBUS_STATUS_WORD       0x79u
+#define PMBUS_READ_VOUT         0x8Bu
+#define PMBUS_READ_IOUT         0x8Cu
+#define PMBUS_READ_TEMPERATURE  0x8Du
+#define PMBUS_MFR_SAVE_CONFIG   0xD0u
+#define PMBUS_MFR_FAN_TEMP      0xD1u
+#define PMBUS_MFR_OCP_LATCH     0xD2u
+#define PMBUS_MFR_OCP_HARD      0xD3u
+#define PMBUS_MFR_OCP_DELAY     0xD4u
+#define PMBUS_MFR_OCP_FOLDBACK  0xD5u
+#define PMBUS_MFR_OVP_NORMAL    0xD6u
+#define PMBUS_MFR_OVP_MODE4     0xD7u
+#define PMBUS_MFR_OVP_FREQ_MIN  0xD8u
+#define PMBUS_MFR_IOUT_LIMIT    0xD9u
+
+static uint8_t pmbus_cmd;
+static uint8_t pmbus_rx_count;
+static uint8_t pmbus_rx_buf[2];
+static uint8_t pmbus_tx_buf[2];
+static uint8_t pmbus_tx_len;
+static uint8_t pmbus_tx_idx;
+static uint16_t pmbus_margin_high;
+static uint16_t pmbus_margin_low;
+static uint8_t pmbus_operation;
+
+static void pmbus_put_word(uint16_t value)
+{
+        pmbus_tx_buf[0] = (uint8_t)value;
+        pmbus_tx_buf[1] = (uint8_t)(value >> 8);
+        pmbus_tx_len = 2;
+        pmbus_tx_idx = 0;
+}
+
+static void pmbus_put_byte(uint8_t value)
+{
+        pmbus_tx_buf[0] = value;
+        pmbus_tx_len = 1;
+        pmbus_tx_idx = 0;
+}
+
+static uint16_t pmbus_status_word(void)
+{
+        uint16_t word = controlStatus;
+
+        if (protectionStatus != 0)
+                word |= 0x0008u;
+        if (pmbusAlertFlags & 0x0001u)
+                word |= 0x0080u;
+        if (systemState == 3u)
+                word |= 0x0400u;
+
+        return word;
+}
+
+static void pmbus_remote_on(void)
+{
+        pmbus_operation = 0x80u;
+        systemState = 2;
+        pwmRunRequest |= (1u << 0);
+        pwmRunning |= (1u << 0);
+        PWMStart();
+}
+
+static void pmbus_remote_off(void)
+{
+        pmbus_operation = 0;
+        pwmRunRequest &= (uint16_t)~(1u << 0);
+        pwmRunning &= (uint16_t)~(1u << 0);
+        systemState = 0;
+        pwm_force_off();
+}
+
+static void pmbus_apply_operation(uint8_t value)
+{
+        if (value == 0xA8u) {
+                if (pmbus_margin_high != 0)
+                        voutSetpoint = (s16)pmbus_margin_high;
+                pmbus_remote_on();
+        } else if (value == 0x98u) {
+                if (pmbus_margin_low != 0)
+                        voutSetpoint = (s16)pmbus_margin_low;
+                pmbus_remote_on();
+        } else if (value & 0x80u) {
+                pmbus_remote_on();
+        } else {
+                pmbus_remote_off();
+        }
+}
+
+static void pmbus_write_word(uint8_t cmd, uint16_t value)
+{
+        switch (cmd) {
+            case PMBUS_VOUT_COMMAND:     voutSetpoint = (s16)value; break;
+            case PMBUS_VOUT_MARGIN_HIGH: pmbus_margin_high = value; break;
+            case PMBUS_VOUT_MARGIN_LOW:  pmbus_margin_low = value; break;
+            case PMBUS_MFR_FAN_TEMP:
+                tempAdcValue = value;
+                adcLiveA = value << 6;
+                break;
+            case PMBUS_MFR_OCP_LATCH:    ocp_latch_threshold = value; break;
+            case PMBUS_MFR_OCP_HARD:     ocp_hard_threshold = value; break;
+            case PMBUS_MFR_OCP_DELAY:    ocp_latch_delay = value; break;
+            case PMBUS_MFR_OCP_FOLDBACK: ocp_foldback_delay = value; break;
+            case PMBUS_MFR_OVP_NORMAL:   ovp_threshold_normal = value; break;
+            case PMBUS_MFR_OVP_MODE4:    ovp_threshold_mode4 = value; break;
+            case PMBUS_MFR_OVP_FREQ_MIN: ovp_freq_ctrl_min = value; break;
+            case PMBUS_MFR_IOUT_LIMIT:   ioutAdcRaw = value; break;
+            default: break;
+        }
+}
+
+static void pmbus_write_byte(uint8_t cmd, uint8_t value)
+{
+        if (cmd == PMBUS_OPERATION) {
+                pmbus_apply_operation(value);
+        } else if ((cmd == PMBUS_MFR_SAVE_CONFIG) && (value == 0xA5u)) {
+                (void)spi_flash_save_config();
+        }
+}
+
+static void pmbus_prepare_response(void)
+{
+        switch (pmbus_cmd) {
+            case PMBUS_OPERATION:         pmbus_put_byte(pmbus_operation); break;
+            case PMBUS_STATUS_BYTE:       pmbus_put_byte((uint8_t)pmbus_status_word()); break;
+            case PMBUS_STATUS_WORD:       pmbus_put_word(pmbus_status_word()); break;
+            case PMBUS_VOUT_COMMAND:      pmbus_put_word((uint16_t)voutSetpoint); break;
+            case PMBUS_VOUT_MARGIN_HIGH:  pmbus_put_word(pmbus_margin_high); break;
+            case PMBUS_VOUT_MARGIN_LOW:   pmbus_put_word(pmbus_margin_low); break;
+            case PMBUS_READ_VOUT:         pmbus_put_word((uint16_t)vout_cal); break;
+            case PMBUS_READ_IOUT:         pmbus_put_word((uint16_t)Imeas_scaled); break;
+            case PMBUS_READ_TEMPERATURE:  pmbus_put_word(tempAdcValue); break;
+            case PMBUS_MFR_FAN_TEMP:      pmbus_put_word(tempAdcValue); break;
+            case PMBUS_MFR_SAVE_CONFIG:   pmbus_put_word(spi_flash_config_status); break;
+            case PMBUS_MFR_OCP_LATCH:     pmbus_put_word(ocp_latch_threshold); break;
+            case PMBUS_MFR_OCP_HARD:      pmbus_put_word(ocp_hard_threshold); break;
+            case PMBUS_MFR_OCP_DELAY:     pmbus_put_word(ocp_latch_delay); break;
+            case PMBUS_MFR_OCP_FOLDBACK:  pmbus_put_word(ocp_foldback_delay); break;
+            case PMBUS_MFR_OVP_NORMAL:    pmbus_put_word(ovp_threshold_normal); break;
+            case PMBUS_MFR_OVP_MODE4:     pmbus_put_word(ovp_threshold_mode4); break;
+            case PMBUS_MFR_OVP_FREQ_MIN:  pmbus_put_word(ovp_freq_ctrl_min); break;
+            case PMBUS_MFR_IOUT_LIMIT:    pmbus_put_word(ioutAdcRaw); break;
+            default:                      pmbus_put_byte(0xFFu); break;
+        }
+}
+
+static void pmbus_accept_byte(uint8_t value)
+{
+        if (pmbus_rx_count == 0) {
+                pmbus_cmd = value;
+                pmbus_rx_count = 1;
+                if (pmbus_cmd == PMBUS_CLEAR_FAULTS) {
+                        protectionStatus = 0;
+                        controlStatus &= (uint16_t)~0x0001u;
+                        pmbusAlertFlags &= (uint16_t)~0x0001u;
+                }
+                pmbus_prepare_response();
+                return;
+        }
+
+        if (pmbus_rx_count > 2)
+                return;
+
+        pmbus_rx_buf[pmbus_rx_count - 1u] = value;
+        pmbus_rx_count++;
+
+        if (pmbus_rx_count == 2)
+                pmbus_write_byte(pmbus_cmd, pmbus_rx_buf[0]);
+
+        if (pmbus_rx_count == 3) {
+                uint16_t word = (uint16_t)pmbus_rx_buf[0] |
+                                ((uint16_t)pmbus_rx_buf[1] << 8);
+                pmbus_write_word(pmbus_cmd, word);
+                pmbus_prepare_response();
+        }
+}
 
 
 static __attribute__((always_inline)) int16_t util_divsd(int32_t dividend, int16_t divisor)
@@ -200,7 +408,26 @@ void __attribute__((__interrupt__, no_auto_psv)) _T2Interrupt()
 
 void __attribute__((__interrupt__, no_auto_psv)) _SI2C2Interrupt()
 {
-        // timerInterruptCount ++; 	/* Increment interrupt counter */
+        if (I2C2STATbits.R_W) {
+                if (!I2C2STATbits.D_A) {
+                        pmbus_tx_idx = 0;
+                        pmbus_prepare_response();
+                }
+
+                if (pmbus_tx_idx < pmbus_tx_len)
+                        I2C2TRN = pmbus_tx_buf[pmbus_tx_idx++];
+                else
+                        I2C2TRN = 0xFFu;
+        } else {
+                uint8_t value = (uint8_t)I2C2RCV;
+
+                if (!I2C2STATbits.D_A)
+                        pmbus_rx_count = 0;
+                else
+                        pmbus_accept_byte(value);
+        }
+
+        I2C2CONbits.SCLREL = 1;
         IFS3bits.SI2C2IF = 0; 		/* Clear Interrupt Flag */
 }
 
